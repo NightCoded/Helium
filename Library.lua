@@ -1952,6 +1952,13 @@ Section5:Button({
     end
 })
 
+Section5:Button({
+Text = "Stop Following",
+Callback = function()
+stopFollowing()
+end
+})
+
 local Players = game:GetService("Players")
 local VirtualUser = game:GetService("VirtualUser")
 local player = Players.LocalPlayer
