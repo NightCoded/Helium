@@ -1849,6 +1849,128 @@ local Section6 = Tab3:Section({
    Side = "Right"
 })
 
+local Section7 = Tab4:Section({
+   Text = "Anim Pack",
+})
+
+
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+
+-- Tombol untuk Rejoin
+Section6:Button({
+    Text = "Rejoin",
+    Callback = function()
+        -- Mengambil Player ID
+        local player = Players.LocalPlayer
+        if player then
+            -- Melakukan teleport ke tempat yang sama, pada server yang sama
+            TeleportService:Teleport(game.PlaceId, player)
+        end
+    end
+})
+
+-- Tombol untuk Random Server
+Section6:Button({
+    Text = "Random Server",
+    Callback = function()
+        local HttpService = game:GetService("HttpService")
+
+        -- Mengambil informasi server yang sedang aktif
+        local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+
+        -- Mengambil server acak
+        local serverId = nil
+        for _, server in pairs(servers.data) do
+            if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                serverId = server.id
+                break
+            end
+        end
+
+        -- Jika ada server acak yang ditemukan, teleport ke server tersebut
+        if serverId then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, Players.LocalPlayer)
+        else
+            warn("Tidak ada server acak yang ditemukan.")
+        end
+    end
+})
+
+
+
+Section6:Button({
+    Text = "Small Server",
+    Callback = function()
+        local HttpService = game:GetService("HttpService")
+
+        -- Mengambil informasi server yang sedang aktif
+        local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+
+        local smallestServer = nil
+        local smallestPlayerCount = math.huge -- Mengatur ke jumlah terbesar
+
+        -- Mencari server dengan jumlah pemain paling sedikit
+        for _, server in pairs(servers.data) do
+            if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                if server.playing < smallestPlayerCount then
+                    smallestPlayerCount = server.playing
+                    smallestServer = server.id
+                end
+            end
+        end
+
+        -- Jika ada server yang ditemukan, teleport ke server tersebut
+        if smallestServer then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, smallestServer, Players.LocalPlayer)
+        else
+            warn("Tidak ada server yang lebih kecil ditemukan.")
+        end
+    end
+})
+
+Section7:Dropdown({
+    Text = "Select Anim",
+    ChangeTextOnPick = true,
+    List = {"Anthro", "Astronaut", "Bubbly", "Cartoony", "Confident", "Cowboy", "Elder", "Ghost", "Knight", "Levitation", "Mage", "Ninja", "Patrol", "Pirate", "Popstar", "Princess", "Robot", "Sneaky", "Stylish", "Superhero", "Toy", "Vampire", "Werewolf", "Zombie"},
+    Callback = function(animName)
+        local function changeAnimations()
+            local character = game.Players.LocalPlayer.Character
+            if character then
+                local Animate = character:FindFirstChild("Animate")
+                if Animate then
+                    -- Print untuk debugging
+                    print("Applying animation: "..animName)
+                    
+                    -- Ambil dan jalankan animasi dari URL
+                    local animUrl = "https://raw.githubusercontent.com/NightCoded/Hellcat/main/tools/Animation/"..animName..".lua"
+                    local success, result = pcall(function()
+                        return loadstring(game:HttpGet(animUrl))()
+                    end)
+
+                    if not success then
+                        warn("Failed to load animation: "..result)
+                    else
+                        print("Animation applied successfully.")
+                    end
+                else
+                    warn("Animate object not found in character.")
+                end
+            else
+                warn("Character not found.")
+            end
+        end
+
+        -- Terapkan perubahan animasi ke karakter pemain saat ini
+        changeAnimations()
+
+        -- Pastikan perubahan animasi diterapkan saat karakter respawn di masa mendatang
+        game.Players.LocalPlayer.CharacterAdded:Connect(function()
+            wait(0.5)  -- Tunggu sebentar hingga karakter sepenuhnya terinisialisasi
+            changeAnimations()
+        end)
+    end
+})
 
 
 -- Fungsi untuk merefresh dropdown
@@ -1910,21 +2032,38 @@ Section5:Button({
 
 
 -- Bagian dari script yang ada
-local followConnection
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
-local function followPlayer(playerToFollow)
+local followConnection
+local playerToFollow
+local playerToFollowConnection
+
+local function followPlayer(targetPlayer)
     local character = player.Character
-    local targetCharacter = playerToFollow.Character
+    local targetCharacter = targetPlayer.Character
 
     if character and targetCharacter then
         local hrp = character:WaitForChild("HumanoidRootPart")
         local targetHrp = targetCharacter:WaitForChild("HumanoidRootPart")
         
         -- Update character position to follow the target
-        followConnection = game:GetService("RunService").RenderStepped:Connect(function()
+        followConnection = RunService.RenderStepped:Connect(function()
             if targetCharacter and targetHrp then
-                hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 2)  -- Follow 5 studs behind the target
+                hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 2)  -- Follow 2 studs behind the target
             end
+        end)
+        
+        -- Handle respawn or death
+        if targetCharacter:FindFirstChildOfClass("Humanoid") then
+            targetCharacter.Humanoid.Died:Connect(function()
+                stopFollowing()
+            end)
+        end
+
+        -- Listen for respawn
+        playerToFollowConnection = targetPlayer.CharacterAdded:Connect(function()
+            followPlayer(targetPlayer)
         end)
     end
 end
@@ -1932,6 +2071,11 @@ end
 local function stopFollowing()
     if followConnection then
         followConnection:Disconnect()
+        followConnection = nil
+    end
+    if playerToFollowConnection then
+        playerToFollowConnection:Disconnect()
+        playerToFollowConnection = nil
     end
 end
 
@@ -1940,9 +2084,10 @@ Section5:Button({
     Default = false,
     Callback = function()
         if selectedPlayerName then
-            local playerToFollow = Players:FindFirstChild(selectedPlayerName)
-            if playerToFollow then
-                followPlayer(playerToFollow)
+            local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+            if targetPlayer then
+                stopFollowing()  -- Ensure no previous follow connections are active
+                followPlayer(targetPlayer)
             else
                 warn("Player not found")
             end
